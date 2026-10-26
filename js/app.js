@@ -111,8 +111,10 @@ route('home', (v) => {
   fill(v, 'h-songs', async () => trackShelf((await api.topSongs(null, 50)).slice(8, 40)));
   fill(v, 'h-albums', async () => albumShelf(await api.topAlbums(null, 24)));
   const chart = api.deezerChart();
-  fill(v, 'h-global', async () => trackShelf((await chart).tracks.slice(0, 24)));
-  fill(v, 'h-artists', async () => artistShelf((await chart).artists));
+  chart.catch(() => {});
+  // Deezer-only shelves: hidden (not an error) on networks where Deezer doesn't answer.
+  fill(v, 'h-global', async () => { try { return trackShelf((await chart).tracks.slice(0, 24)); } catch { return null; } });
+  fill(v, 'h-artists', async () => { try { return artistShelf((await chart).artists); } catch { return null; } });
 });
 
 route('browse', (v) => {
@@ -183,7 +185,12 @@ route('radio', (v) => {
     if (seed) return startStation({ name: seed.artist });
     toast('Starting radio…'); const t = await api.topSongs(null, 50); player.playList(api.shuffleUnique(t), 0, { shuffle: false });
   };
-  fill(v, 'r-art', async () => `<div class="shelf circles">${(await api.deezerChart()).artists.map((a) => `<button class="card circle" data-station-artist="${esc(a.id)}" data-name="${esc(a.name)}"><div class="art">${img(a.artwork, 300)}</div><div class="t">${esc(a.name)} Radio</div></button>`).join('')}</div>`);
+  fill(v, 'r-art', async () => {
+    try { return `<div class="shelf circles">${(await api.deezerChart()).artists.map((a) => `<button class="card circle" data-station-artist="${esc(a.id)}" data-name="${esc(a.name)}"><div class="art">${img(a.artwork, 300)}</div><div class="t">${esc(a.name)} Radio</div></button>`).join('')}</div>`; } catch {
+      const seen = new Set(); const top = (await api.topSongs(null, 50)).filter((t) => t.artist && !seen.has(t.artist) && seen.add(t.artist)).slice(0, 12);
+      return `<div class="shelf circles">${top.map((t) => `<button class="card circle" data-station-name="${esc(t.artist)}"><div class="art">${img(t.artwork, 300)}</div><div class="t">${esc(t.artist)} Radio</div></button>`).join('')}</div>`;
+    }
+  });
 });
 async function startStation({ name, id, genre, label }) {
   toast(`Starting ${label || name} Radio…`);
@@ -253,12 +260,16 @@ async function doSearch(q) {
   }
   box.innerHTML = `<section class="section">${skel('list')}</section>`;
   let r;
-  try { r = await api.search(q); } catch (e) { if (lastQ === q) box.innerHTML = `<div class="empty"><h3>Search isn’t reachable</h3><p>${esc(e.message)}</p></div>`; return; }
+  try { r = await api.search(q); } catch (e) {
+    if (lastQ !== q || !box.isConnected) return;
+    box.innerHTML = `<div class="empty"><h3>Search isn’t reachable</h3><p>${esc(e.message)}</p><p><button class="pill" id="s-retry">Try Again</button></p></div>`;
+    $('#s-retry', box).onclick = () => doSearch(q); return;
+  }
   if (lastQ !== q || !box.isConnected) return;
   store.set('searches', [q, ...store.get('searches', []).filter((s) => s.toLowerCase() !== q.toLowerCase())].slice(0, 8));
   lists = {};
   if (!r.tracks.length && !r.albums.length && !r.artists.length) { box.innerHTML = `<div class="empty"><h3>No Results</h3><p>Nothing found for “${esc(q)}”. Try a different spelling.</p></div>`; return; }
-  const topArtist = r.artists[0]; const k = reg(r.tracks);
+  const topArtist = r.topArtist; const k = reg(r.tracks);
   const top = [];
   if (topArtist) top.push(`<a class="top-card circle" href="#/artist/${esc(topArtist.id)}"><div class="art">${img(topArtist.artwork, 200)}</div><div style="min-width:0"><div class="t">${esc(topArtist.name)}</div><div class="s">Artist</div></div></a>`);
   r.tracks.slice(0, topArtist ? 2 : 3).forEach((t, i) => top.push(`<div class="top-card" role="button" tabindex="0" data-list="${k}" data-i="${i}"><div class="art">${img(t.artwork, 200)}</div><div style="min-width:0"><div class="t">${esc(t.title)}</div><div class="s">Song · ${esc(t.artist)}</div></div></div>`));
@@ -557,4 +568,9 @@ document.addEventListener('keydown', (e) => {
 
 // ---------------- boot ----------------
 render();
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  // When an updated worker takes over a page that an older one was serving, reload once so the new files run.
+  const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded) { reloaded = true; location.reload(); } });
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {});
+}
