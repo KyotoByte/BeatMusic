@@ -32,22 +32,31 @@ export async function fetchJSON(url, timeout = 9000) {
   } finally { clearTimeout(tm); }
 }
 
+// Deezer's JSONP endpoint is fast on most networks but on some (seen on Indian mobile networks) the request
+// just hangs for ~20 s. So: short timeouts, and after a network failure we skip Deezer for a few minutes
+// instead of making every screen wait on it again. A late answer after a timeout lands on a no-op.
 let jp = 0;
-export function jsonp(url, timeout = 9000) {
+let dzBadUntil = 0;
+export const deezerReachable = () => Date.now() >= dzBadUntil;
+export function jsonp(url, timeout = 5000) {
   return new Promise((resolve, reject) => {
+    if (!deezerReachable()) { reject(new Error('Deezer unreachable')); return; }
     const cb = `__bm_jsonp_${++jp}_${Date.now().toString(36)}`;
     const s = document.createElement('script');
-    const done = () => { clearTimeout(tm); delete window[cb]; s.remove(); };
-    const tm = setTimeout(() => { done(); reject(new Error('timeout')); }, timeout);
-    window[cb] = (d) => { done(); if (d && d.error) reject(new Error(d.error.message || 'API error')); else resolve(d); };
-    s.onerror = () => { done(); reject(new Error('network')); };
+    let settled = false;
+    const done = () => { settled = true; clearTimeout(tm); window[cb] = () => {}; setTimeout(() => { delete window[cb]; }, 60000); s.remove(); };
+    const netFail = (msg) => { if (settled) return; done(); dzBadUntil = Date.now() + 5 * 60 * 1000; reject(new Error(msg)); };
+    const tm = setTimeout(() => netFail('Deezer timed out'), timeout);
+    window[cb] = (d) => { if (settled) return; done(); dzBadUntil = 0; if (d && d.error) reject(new Error(d.error.message || 'API error')); else resolve(d); };
+    s.onerror = () => netFail('Deezer unreachable');
     s.referrerPolicy = 'no-referrer';
     s.src = url + (url.includes('?') ? '&' : '?') + 'output=jsonp&callback=' + cb;
     document.head.appendChild(s);
   });
 }
-const dz = (path) => cached('dz' + path, () => jsonp('https://api.deezer.com' + path));
-const it = (url) => cached(url, () => fetchJSON(url));
+const dz = (path, timeout) => cached('dz' + path, () => jsonp('https://api.deezer.com' + path, timeout));
+const it = (url, timeout) => cached(url, () => fetchJSON(url, timeout));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- artwork ----------
 export function art(url, size = 300) {
@@ -110,41 +119,56 @@ export async function deezerChart() {
 }
 
 // ---------- search ----------
+// iTunes Search (CORS, answers fast from everywhere we tested, incl. Indian mobile networks) is the primary
+// source for songs and albums. Deezer is secondary: it supplies artist pictures when it answers quickly,
+// and songs/albums only if iTunes itself fails.
+const fold = (x) => (x || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+const qwords = (q) => fold(q).split(/\s+/).filter(Boolean);
 export async function search(q) {
   q = q.trim(); if (!q) return { tracks: [], albums: [], artists: [] };
-  const e = encodeURIComponent(q);
-  const [tr, al, ar] = await Promise.allSettled([
-    dz(`/search?q=${e}&limit=30`), dz(`/search/album?q=${e}&limit=14`), dz(`/search/artist?q=${e}&limit=10`)]);
-  let tracks = tr.status === 'fulfilled' ? relevance((tr.value.data || []), q).map(fromDeezer) : null;
-  let albums = al.status === 'fulfilled' ? (al.value.data || []).map(albumFromDeezer) : null;
-  const artists = ar.status === 'fulfilled' ? (ar.value.data || []).map(artistFromDeezer) : [];
-  // Fallback to iTunes if Deezer is unreachable (blocked network, outage).
+  const e = encodeURIComponent(q); const c = country();
+  const dzArtists = dz(`/search/artist?q=${e}&limit=10`, 4000).then((d) => (d.data || []).map(artistFromDeezer));
+  dzArtists.catch(() => {});
+  const [s, a] = await Promise.allSettled([
+    it(`https://itunes.apple.com/search?term=${e}&media=music&entity=song&limit=40&country=${c}`, 8000),
+    it(`https://itunes.apple.com/search?term=${e}&media=music&entity=album&limit=14&country=${c}`, 8000)]);
+  let tracks = s.status === 'fulfilled' ? relevance((s.value.results || []).filter((r) => r.kind === 'song').map(fromItunes), q) : null;
+  let albums = a.status === 'fulfilled' ? (a.value.results || []).map(albumFromItunes) : null;
   if (!tracks || !albums) {
-    const c = country();
-    const [s, a] = await Promise.allSettled([
-      it(`https://itunes.apple.com/search?term=${e}&entity=song&limit=30&country=${c}`),
-      it(`https://itunes.apple.com/search?term=${e}&entity=album&limit=14&country=${c}`)]);
-    if (!tracks) tracks = s.status === 'fulfilled' ? s.value.results.map(fromItunes) : [];
-    if (!albums) albums = a.status === 'fulfilled' ? a.value.results.map(albumFromItunes) : [];
-    if (s.status === 'rejected' && tr.status === 'rejected') throw new Error('Search is unreachable right now');
+    const [tr, al] = await Promise.allSettled([dz(`/search?q=${e}&limit=30`), dz(`/search/album?q=${e}&limit=14`)]);
+    if (!tracks) tracks = tr.status === 'fulfilled' ? relevance((tr.value.data || []).map(fromDeezer), q) : null;
+    if (!albums) albums = al.status === 'fulfilled' ? (al.value.data || []).map(albumFromDeezer) : [];
+    if (!tracks) throw new Error('Couldn’t reach the music catalog. Check your connection and try again.');
   }
-  return { tracks, albums, artists };
+  // Artists: Deezer's (with photos) if it answers within a short grace, else the artists of the songs found.
+  let artists = await Promise.race([dzArtists, sleep(1500).then(() => null)]).catch(() => null);
+  if (!artists || !artists.length) artists = artistsFromTracks(tracks);
+  const w = qwords(q);
+  const named = (n) => { const f = fold(n); return f && w.length && (f === w.join(' ') || f.split(/\s+/).every((x) => w.includes(x))); };
+  artists = artists.map((x, i) => ({ x, i, m: named(x.name) ? 1 : 0 })).sort((p1, p2) => (p2.m - p1.m) || (p1.i - p2.i)).map((o) => o.x);
+  return { tracks, albums, artists, topArtist: artists.find((x) => named(x.name)) || null };
 }
-// Deezer's order for a mixed "song + artist" query can put an unknown upload first; keep its order but
-// move results that contain every query word up, and break ties by Deezer popularity (rank).
+function artistsFromTracks(tracks) {
+  const seen = new Map();
+  for (const t of tracks) {
+    const name = (t.artist || '').split(/,| & | feat\.? | ft\.? /i)[0].trim();
+    if (!name || !t.artistId || seen.has(name.toLowerCase())) continue;
+    seen.set(name.toLowerCase(), { id: t.artistId, name, artwork: t.artwork, fans: 0 });
+  }
+  return [...seen.values()].slice(0, 10);
+}
+// Keep the source's order, but move results that contain every query word up.
 function relevance(list, q) {
-  const words = q.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').split(/\s+/).filter(Boolean);
-  const hay = (r) => `${r.title} ${r.artist?.name} ${r.album?.title}`.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
-  const tier = (r) => { const h = hay(r); const hit = words.filter((w) => h.includes(w)).length / (words.length || 1);
-    const t = (r.title || '').toLowerCase(), a = (r.artist?.name || '').toLowerCase();
-    const clean = words.some((w) => a.includes(w)) && !words.every((w) => t.includes(w) && !a.includes(w)) ? 1 : 0;
+  const words = qwords(q);
+  const tier = (t) => { const h = fold(`${t.title} ${t.artist} ${t.album}`); const hit = words.filter((w) => h.includes(w)).length / (words.length || 1);
+    const a = fold(t.artist), ti = fold(t.title);
+    const clean = words.some((w) => a.includes(w)) && !words.every((w) => ti.includes(w) && !a.includes(w)) ? 1 : 0;
     return hit + clean * 0.5; };
-  return list.map((r, i) => ({ r, i, s: tier(r), k: r.rank || 0 }))
-    .sort((x, y) => (y.s - x.s) || (y.k - x.k)).map((x) => x.r);
+  return list.map((t, i) => ({ t, i, s: tier(t) })).sort((x, y) => (y.s - x.s) || (x.i - y.i)).map((x) => x.t);
 }
 export async function suggest(q) {
-  const d = await dz(`/search?q=${encodeURIComponent(q)}&limit=6`);
-  return (d.data || []).map(fromDeezer);
+  const d = await it(`https://itunes.apple.com/search?term=${encodeURIComponent(q)}&media=music&entity=song&limit=6&country=${country()}`, 6000);
+  return (d.results || []).map(fromItunes);
 }
 
 // ---------- albums / artists ----------
@@ -165,19 +189,36 @@ export async function deezerArtistByName(name) {
   const a = d.data?.[0]; return a ? artistFromDeezer(a) : null;
 }
 export async function artist(id, nameHint) {
-  if (!id || id.startsWith('it:')) {
-    let name = nameHint;
-    if (!name && id) { const d = await it(`https://itunes.apple.com/lookup?id=${id.slice(3)}`); name = d.results?.[0]?.artistName; }
-    const a = name && await deezerArtistByName(name);
-    if (!a) throw new Error('Artist not found');
-    id = a.id;
+  const itId = id && id.startsWith('it:') ? id.slice(3) : null;
+  try {
+    if (!id || itId) {
+      let name = nameHint;
+      if (!name && itId) { const d = await it(`https://itunes.apple.com/lookup?id=${itId}`); name = d.results?.[0]?.artistName; }
+      const a = name && await deezerArtistByName(name);
+      if (!a) throw new Error('Artist not found');
+      id = a.id;
+    }
+    const n = id.slice(3);
+    const [a, top, albums, related] = await Promise.all([dz('/artist/' + n), dz(`/artist/${n}/top?limit=20`),
+      dz(`/artist/${n}/albums?limit=40`), dz(`/artist/${n}/related?limit=16`).catch(() => ({ data: [] }))]);
+    return { ...artistFromDeezer(a), top: (top.data || []).map(fromDeezer),
+      albums: (albums.data || []).map((x) => albumFromDeezer({ ...x, artist: { id: a.id, name: a.name } })),
+      related: (related.data || []).map(artistFromDeezer) };
+  } catch (err) {
+    if (!itId) throw err;
+    return itunesArtist(itId);
   }
-  const n = id.slice(3);
-  const [a, top, albums, related] = await Promise.all([dz('/artist/' + n), dz(`/artist/${n}/top?limit=20`),
-    dz(`/artist/${n}/albums?limit=40`), dz(`/artist/${n}/related?limit=16`).catch(() => ({ data: [] }))]);
-  return { ...artistFromDeezer(a), top: (top.data || []).map(fromDeezer),
-    albums: (albums.data || []).map((x) => albumFromDeezer({ ...x, artist: { id: a.id, name: a.name } })),
-    related: (related.data || []).map(artistFromDeezer) };
+}
+// Artist page from iTunes alone (when Deezer is unreachable).
+async function itunesArtist(n) {
+  const c = country();
+  const [s, a] = await Promise.all([it(`https://itunes.apple.com/lookup?id=${n}&entity=song&limit=25&country=${c}`),
+    it(`https://itunes.apple.com/lookup?id=${n}&entity=album&limit=40&country=${c}`).catch(() => ({ results: [] }))]);
+  const head = s.results.find((r) => r.wrapperType === 'artist');
+  if (!head) throw new Error('Artist not found');
+  const top = s.results.filter((r) => r.wrapperType === 'track').map(fromItunes);
+  return { id: 'it:' + n, name: head.artistName, artwork: top[0]?.artwork, fans: 0, top,
+    albums: a.results.filter((r) => r.wrapperType === 'collection').map(albumFromItunes), related: [] };
 }
 export async function deezerPlaylist(id) {
   const p = await dz(`/playlist/${id}`);
@@ -189,14 +230,22 @@ export async function deezerPlaylist(id) {
 // Honest description: a station is a list built from Deezer's public "artist mix" and similar-artist data
 // (or a genre chart), not a personal recommendation algorithm.
 export async function artistStation(artistName, artistDzId) {
-  let id = artistDzId;
-  if (!id) { const a = await deezerArtistByName(artistName); if (!a) throw new Error('Artist not found'); id = a.id; }
-  const n = id.replace('dz:', '');
-  const [mix, rel] = await Promise.all([dz(`/artist/${n}/radio?limit=40`).catch(() => ({ data: [] })), dz(`/artist/${n}/related?limit=6`).catch(() => ({ data: [] }))]);
-  let tracks = (mix.data || []).map(fromDeezer);
-  const relTops = await Promise.allSettled((rel.data || []).slice(0, 4).map((r) => dz(`/artist/${r.id}/top?limit=3`)));
-  relTops.forEach((r) => { if (r.status === 'fulfilled') tracks.push(...(r.value.data || []).map(fromDeezer)); });
-  return shuffleUnique(tracks);
+  try {
+    let id = artistDzId && artistDzId.startsWith('dz:') ? artistDzId : null;
+    if (!id) { const a = await deezerArtistByName(artistName); if (!a) throw new Error('Artist not found'); id = a.id; }
+    const n = id.replace('dz:', '');
+    const [mix, rel] = await Promise.all([dz(`/artist/${n}/radio?limit=40`).catch(() => ({ data: [] })), dz(`/artist/${n}/related?limit=6`).catch(() => ({ data: [] }))]);
+    let tracks = (mix.data || []).map(fromDeezer);
+    const relTops = await Promise.allSettled((rel.data || []).slice(0, 4).map((r) => dz(`/artist/${r.id}/top?limit=3`)));
+    relTops.forEach((r) => { if (r.status === 'fulfilled') tracks.push(...(r.value.data || []).map(fromDeezer)); });
+    if (!tracks.length) throw new Error('empty');
+    return shuffleUnique(tracks);
+  } catch (err) {
+    if (!artistName) throw err;
+    // Deezer unreachable: the artist's own songs from iTunes.
+    const d = await it(`https://itunes.apple.com/search?term=${encodeURIComponent(artistName)}&media=music&entity=song&attribute=artistTerm&limit=40&country=${country()}`);
+    return shuffleUnique((d.results || []).map(fromItunes));
+  }
 }
 export async function genreStation(genreId) {
   const t = await topSongs(genreId, 50);
