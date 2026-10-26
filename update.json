@@ -1,0 +1,18 @@
+{
+  "versionCode": 3,
+  "versionName": "1.0",
+  "notes": "BeatMusic 1.0 (build 3): credits moved to the GitHub README; Settings keeps a Licence entry. Includes Liquid Glass on by default, Check for updates, crash and lint fixes.",
+  "releaseUrl": "https://github.com/KyotoByte/BeatMusic/releases/tag/v1.0",
+  "apks": {
+    "arm64-v8a": "https://github.com/KyotoByte/BeatMusic/releases/download/v1.0/BeatMusic-1.0-arm64-v8a.apk",
+    "armeabi-v7a": "https://github.com/KyotoByte/BeatMusic/releases/download/v1.0/BeatMusic-1.0-armeabi-v7a.apk",
+    "x86_64": "https://github.com/KyotoByte/BeatMusic/releases/download/v1.0/BeatMusic-1.0-x86_64.apk",
+    "universal": "https://github.com/KyotoByte/BeatMusic/releases/download/v1.0/BeatMusic-1.0-universal.apk"
+  },
+  "sha256": {
+    "arm64-v8a": "1d8694fb281b31b018fc1c45935783fba9557c0a7e7125b7257faa1c7aabcaca",
+    "armeabi-v7a": "f77f39d7625943afc540a3f43181d8a2026749e6f9e50ffec66f7a247b72132e",
+    "x86_64": "5a8ff91229b562344e01f1b180bc95afbbfe31e7f660382936f4402ac7a537c9",
+    "universal": "65f325195cb653dd1f0d83a0838be9c87c0ac4a103d59483d1080fed4957d025"
+  }
+}
