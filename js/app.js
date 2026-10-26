@@ -62,7 +62,8 @@ function topArtistsFrom(songs, max = 16) {
 }
 const albumCard = (a) => `<a class="card" href="#/album/${esc(a.id)}"><div class="art">${img(a.artwork, 300)}</div><div class="t">${esc(a.title)}</div><div class="s">${esc(a.artist || a.year || '')}</div></a>`;
 const albumShelf = (as) => `<div class="shelf">${as.map(albumCard).join('')}</div>`;
-const artistCard = (a, href) => `<a class="card circle" href="${href || '#/artist/' + esc(a.id)}"><div class="art">${img(a.artwork, 300)}</div><div class="t">${esc(a.name)}</div></a>`;
+const artistHref = (a) => `#/artist/${esc(a.id)}?name=${encodeURIComponent(a.name || '')}`; // the name lets the page fall back to iTunes if Deezer drops out
+const artistCard = (a, href) => `<a class="card circle" href="${href || artistHref(a)}"><div class="art">${img(a.artwork, 300)}</div><div class="t">${esc(a.name)}</div></a>`;
 const artistShelf = (as) => `<div class="shelf circles">${as.map((a) => artistCard(a, a.href)).join('')}</div>`;
 const skel = (kind = 'cards') => kind === 'list' ? `<div class="list">${'<div class="trow"><span class="art skeleton"></span><span class="tm"><div class="t skeleton" style="width:60%;height:12px;border-radius:4px"></div></span></div>'.repeat(6)}</div>`
   : `<div class="shelf">${'<div class="card"><div class="art skeleton"></div><div class="t skeleton" style="height:10px;width:70%;border-radius:4px"></div></div>'.repeat(6)}</div>`;
@@ -290,7 +291,7 @@ async function doSearch(q) {
   if (!r.tracks.length && !r.albums.length && !r.artists.length) { box.innerHTML = `<div class="empty"><h3>No Results</h3><p>Nothing found for “${esc(q)}”. Try a different spelling.</p></div>`; return; }
   const topArtist = r.topArtist; const k = reg(r.tracks);
   const top = [];
-  if (topArtist) top.push(`<a class="top-card circle" href="#/artist/${esc(topArtist.id)}"><div class="art">${img(topArtist.artwork, 200)}</div><div style="min-width:0"><div class="t">${esc(topArtist.name)}</div><div class="s">Artist</div></div></a>`);
+  if (topArtist) top.push(`<a class="top-card circle" href="${artistHref(topArtist)}"><div class="art">${img(topArtist.artwork, 200)}</div><div style="min-width:0"><div class="t">${esc(topArtist.name)}</div><div class="s">Artist</div></div></a>`);
   r.tracks.slice(0, topArtist ? 2 : 3).forEach((t, i) => top.push(`<div class="top-card" role="button" tabindex="0" data-list="${k}" data-i="${i}"><div class="art">${img(t.artwork, 200)}</div><div style="min-width:0"><div class="t">${esc(t.title)}</div><div class="s">Song · ${esc(t.artist)}</div></div></div>`));
   box.innerHTML = `<section class="section"><div class="section-head"><h2>Top Results</h2></div><div class="top-results">${top.join('')}</div></section>` +
     (r.tracks.length ? `<section class="section"><div class="section-head"><h2>Songs</h2></div><div class="cols2">${r.tracks.map((t, i) => trackRow(t, i, k)).join('')}</div></section>` : '') +
@@ -536,7 +537,7 @@ $('#queue-panel').addEventListener('click', (e) => {
 // ---------------- player events ----------------
 player.addEventListener('track', () => { updateMini(); updateNP(); playIcons(); });
 player.addEventListener('state', () => { playIcons(); updateSource(); });
-player.addEventListener('source', updateSource);
+player.addEventListener('source', () => { updateSource(); playIcons(); });
 player.addEventListener('time', updateTime);
 player.addEventListener('queue', () => { renderQueue(); playIcons(); });
 onLibrary(syncLike);
