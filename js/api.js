@@ -114,6 +114,9 @@ export async function topAlbums(genre, limit = 30) {
 }
 export async function deezerChart() {
   const d = await dz('/chart/0?limit=30');
+  // In regions where Deezer doesn't sell music (e.g. India) it still answers, but with empty track lists and a
+  // foreign default chart. Treat that as "Deezer unavailable" so the callers fall back to iTunes or hide the shelf.
+  if (!(d.tracks?.data || []).length) throw new Error('Deezer charts aren’t available in your region');
   return { tracks: (d.tracks?.data || []).map(fromDeezer), albums: (d.albums?.data || []).map(albumFromDeezer),
     artists: (d.artists?.data || []).map(artistFromDeezer), playlists: d.playlists?.data || [] };
 }
@@ -146,7 +149,8 @@ export async function search(q) {
   const w = qwords(q);
   const named = (n) => { const f = fold(n); return f && w.length && (f === w.join(' ') || f.split(/\s+/).every((x) => w.includes(x))); };
   artists = artists.map((x, i) => ({ x, i, m: named(x.name) ? 1 : 0 })).sort((p1, p2) => (p2.m - p1.m) || (p1.i - p2.i)).map((o) => o.x);
-  return { tracks, albums, artists, topArtist: artists.find((x) => named(x.name)) || null };
+  const inSongs = (n) => tracks.slice(0, 15).some((t) => fold(t.artist).includes(fold(n)));
+  return { tracks, albums, artists, topArtist: artists.find((x) => named(x.name) && inSongs(x.name)) || null };
 }
 function artistsFromTracks(tracks) {
   const seen = new Map();
@@ -177,6 +181,10 @@ export async function album(id) {
     const a = await dz('/album/' + id.slice(3));
     const al = albumFromDeezer(a);
     const tracks = (a.tracks?.data || []).map((t) => fromDeezer({ ...t, album: { id: a.id, title: a.title, cover_xl: a.cover_xl, cover_big: a.cover_big } }));
+    if (!tracks.length && a.title) { // Deezer hides the tracks in some regions: same album from iTunes
+      const s = await it(`https://itunes.apple.com/search?term=${encodeURIComponent(a.title + ' ' + (a.artist?.name || ''))}&media=music&entity=album&limit=1&country=${country()}`).catch(() => null);
+      const hit = s?.results?.[0]; if (hit) return album('it:' + hit.collectionId);
+    }
     return { ...al, tracks, label: a.label };
   }
   const d = await it(`https://itunes.apple.com/lookup?id=${id.slice(3)}&entity=song&country=${country()}`);
@@ -189,9 +197,10 @@ export async function deezerArtistByName(name) {
   const a = d.data?.[0]; return a ? artistFromDeezer(a) : null;
 }
 export async function artist(id, nameHint) {
-  const itId = id && id.startsWith('it:') ? id.slice(3) : null;
+  const itId = id && id.startsWith('it:') && id.length > 3 ? id.slice(3) : null;
+  let dzA = null;
   try {
-    if (!id || itId) {
+    if (!id || !id.startsWith('dz:')) {
       let name = nameHint;
       if (!name && itId) { const d = await it(`https://itunes.apple.com/lookup?id=${itId}`); name = d.results?.[0]?.artistName; }
       const a = name && await deezerArtistByName(name);
@@ -200,14 +209,29 @@ export async function artist(id, nameHint) {
     }
     const n = id.slice(3);
     const [a, top, albums, related] = await Promise.all([dz('/artist/' + n), dz(`/artist/${n}/top?limit=20`),
-      dz(`/artist/${n}/albums?limit=40`), dz(`/artist/${n}/related?limit=16`).catch(() => ({ data: [] }))]);
-    return { ...artistFromDeezer(a), top: (top.data || []).map(fromDeezer),
-      albums: (albums.data || []).map((x) => albumFromDeezer({ ...x, artist: { id: a.id, name: a.name } })),
-      related: (related.data || []).map(artistFromDeezer) };
+      dz(`/artist/${n}/albums?limit=40`).catch(() => ({ data: [] })), dz(`/artist/${n}/related?limit=16`).catch(() => ({ data: [] }))]);
+    dzA = { ...artistFromDeezer(a), related: (related.data || []).map(artistFromDeezer) };
+    const res = { ...dzA, top: (top.data || []).map(fromDeezer),
+      albums: (albums.data || []).map((x) => albumFromDeezer({ ...x, artist: { id: a.id, name: a.name } })) };
+    if (!res.top.length) throw new Error('empty catalog'); // Deezer answers but hides its catalog in some regions
+    return res;
   } catch (err) {
-    if (!itId) throw err;
-    return itunesArtist(itId);
+    // iTunes: by id when we have one, else by name. Keep Deezer's photo when it gave one.
+    const name = dzA?.name || nameHint;
+    const iid = itId || (name && await itunesArtistId(name).catch(() => null));
+    if (!iid) throw err.message === 'empty catalog' ? new Error('No songs found for this artist') : err;
+    const r = await itunesArtist(iid);
+    if (dzA?.artwork) r.artwork = dzA.artwork;
+    if (dzA?.fans) r.fans = dzA.fans;
+    if (dzA?.related?.length) r.related = dzA.related;
+    return r;
   }
+}
+async function itunesArtistId(name) {
+  const d = await it(`https://itunes.apple.com/search?term=${encodeURIComponent(name)}&media=music&entity=musicArtist&limit=5&country=${country()}`, 7000);
+  const rs = d.results || []; const f = fold(name);
+  const hit = rs.find((r) => fold(r.artistName) === f) || rs[0];
+  return hit ? String(hit.artistId) : null;
 }
 // Artist page from iTunes alone (when Deezer is unreachable).
 async function itunesArtist(n) {
@@ -222,6 +246,7 @@ async function itunesArtist(n) {
 }
 export async function deezerPlaylist(id) {
   const p = await dz(`/playlist/${id}`);
+  if (!(p.tracks?.data || []).length) throw new Error('This playlist isn’t available in your region.');
   return { id: 'dzp:' + id, title: p.title, artist: p.creator?.name || 'Deezer', artwork: p.picture_xl || p.picture_big,
     description: p.description, tracks: (p.tracks?.data || []).map(fromDeezer) };
 }

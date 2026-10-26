@@ -118,6 +118,7 @@ export class Player extends EventTarget {
     if (!id) return this.playPreview(tok, 'Full song isn’t embeddable');
     this.mode = 'yt'; this.videoId = id; this.emit('source');
     this.yt.loadVideoById({ videoId: id, startSeconds: 0 });
+    this.startTick();
     this.yt.setVolume(this.volume); this.yt.unMute?.();
   }
   playPreview(tok, why) {
@@ -143,6 +144,13 @@ export class Player extends EventTarget {
       });
     })).catch((e) => { this.ytReady = null; throw e; });
     return this.ytReady;
+  }
+  // The IFrame API sometimes drops a state event (seen on desktop: video playing, status stuck on "loading"),
+  // which made pause/seek look dead. While loading, read the real state from the player itself.
+  syncYTState() {
+    if (this.mode !== 'yt' || this.status !== 'loading' || !this.yt?.getPlayerState) return;
+    let s; try { s = this.yt.getPlayerState(); } catch { return; }
+    if (s === 1) this.setStatus('playing'); else if (s === 2) this.setStatus('paused');
   }
   onYTState(s) {
     if (this.mode !== 'yt') return;
@@ -173,7 +181,10 @@ export class Player extends EventTarget {
     else if (this.status === 'error') this.load();
   }
   pause() { if (this.mode === 'yt') this.yt?.pauseVideo(); else if (this.mode === 'preview') this.audio.pause(); }
-  toggle() { if (this.status === 'playing' || (this.status === 'loading' && this.mode)) this.pause(); else this.play(); }
+  toggle() {
+    this.syncYTState();
+    if (this.status === 'playing' || (this.status === 'loading' && this.mode)) this.pause(); else this.play();
+  }
   time() {
     if (this.mode === 'yt') return this.yt?.getCurrentTime?.() || 0;
     if (this.mode === 'preview') return this.audio.currentTime || 0;
@@ -197,7 +208,7 @@ export class Player extends EventTarget {
   startTick() { if (!this._tickOn) { this._tickOn = true; this._last = 0; requestAnimationFrame(this.tick); } }
   tick(now) {
     if (this.status !== 'playing' && this.status !== 'loading') { this._tickOn = false; this.emit('time'); return; }
-    if (now - this._last > (document.hidden ? 1000 : 120)) { this._last = now; this.emit('time'); this.positionState(); }
+    if (now - this._last > (document.hidden ? 1000 : 120)) { this._last = now; this.syncYTState(); this.emit('time'); this.positionState(); }
     requestAnimationFrame(this.tick);
   }
 

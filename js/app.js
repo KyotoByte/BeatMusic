@@ -47,10 +47,23 @@ function songCards(tracks) {
   return `<div class="shelf">${tracks.map((t, i) => `<div class="card" role="button" tabindex="0" data-list="${k}" data-i="${i}" aria-label="Play ${esc(t.title)}">
     <div class="art">${img(t.artwork, 300)}<span class="play-platter">${icon('play')}</span></div><div class="t">${esc(t.title)}</div><div class="s">${esc(t.artist)}</div></div>`).join('')}</div>`;
 }
+const songsN = (n) => `${n} ${+n === 1 ? 'song' : 'songs'}`;
+// Artists of a song chart (iTunes has no artist photos, so the song's artwork stands in).
+function topArtistsFrom(songs, max = 16) {
+  const seen = new Set(); const out = [];
+  for (const t of songs) {
+    const name = (t.artist || '').split(/,| & | feat\.? | ft\.? /i)[0].trim(); const k = name.toLowerCase();
+    if (!name || seen.has(k)) continue; seen.add(k);
+    const id = t.artistId && t.artistId.length > 3 ? t.artistId : 'it:';
+    out.push({ id, name, artwork: t.artwork, href: `#/artist/${esc(id)}?name=${encodeURIComponent(name)}` });
+    if (out.length >= max) break;
+  }
+  return out;
+}
 const albumCard = (a) => `<a class="card" href="#/album/${esc(a.id)}"><div class="art">${img(a.artwork, 300)}</div><div class="t">${esc(a.title)}</div><div class="s">${esc(a.artist || a.year || '')}</div></a>`;
 const albumShelf = (as) => `<div class="shelf">${as.map(albumCard).join('')}</div>`;
 const artistCard = (a, href) => `<a class="card circle" href="${href || '#/artist/' + esc(a.id)}"><div class="art">${img(a.artwork, 300)}</div><div class="t">${esc(a.name)}</div></a>`;
-const artistShelf = (as) => `<div class="shelf circles">${as.map((a) => artistCard(a)).join('')}</div>`;
+const artistShelf = (as) => `<div class="shelf circles">${as.map((a) => artistCard(a, a.href)).join('')}</div>`;
 const skel = (kind = 'cards') => kind === 'list' ? `<div class="list">${'<div class="trow"><span class="art skeleton"></span><span class="tm"><div class="t skeleton" style="width:60%;height:12px;border-radius:4px"></div></span></div>'.repeat(6)}</div>`
   : `<div class="shelf">${'<div class="card"><div class="art skeleton"></div><div class="t skeleton" style="height:10px;width:70%;border-radius:4px"></div></div>'.repeat(6)}</div>`;
 const section = (id, title, sub = '', link = '') => `<section class="section" id="${id}"><div class="section-head"><h2>${title}${link ? icon('chev-right') : ''}</h2>${sub ? `<span class="note">${sub}</span>` : ''}</div><div class="sbody">${skel()}</div></section>`;
@@ -113,8 +126,13 @@ route('home', (v) => {
   const chart = api.deezerChart();
   chart.catch(() => {});
   // Deezer-only shelves: hidden (not an error) on networks where Deezer doesn't answer.
-  fill(v, 'h-global', async () => { try { return trackShelf((await chart).tracks.slice(0, 24)); } catch { return null; } });
-  fill(v, 'h-artists', async () => { try { return artistShelf((await chart).artists); } catch { return null; } });
+  fill(v, 'h-global', async () => { try { const t = (await chart).tracks; return t.length ? trackShelf(t.slice(0, 24)) : null; } catch { return null; } });
+  // Popular Artists: Deezer's chart (with photos), else the artists of this country's top songs.
+  fill(v, 'h-artists', async () => {
+    let as = []; try { as = (await chart).artists; } catch { /* Deezer unavailable */ }
+    if (!as.length) as = topArtistsFrom(await api.topSongs(null, 50).catch(() => []));
+    return as.length ? artistShelf(as) : null;
+  });
 });
 
 route('browse', (v) => {
@@ -123,8 +141,9 @@ route('browse', (v) => {
     section('b-pl', 'Editorial Playlists', 'from Deezer');
   fill(v, 'b-new', async () => albumShelf(await api.topAlbums(null, 30)));
   fill(v, 'b-pl', async () => {
-    const pl = (await api.deezerChart()).playlists;
-    return `<div class="shelf">${pl.map((p) => `<a class="card" href="#/dzplaylist/${p.id}"><div class="art">${img(p.picture_xl || p.picture_big, 300)}</div><div class="t">${esc(p.title)}</div><div class="s">${p.nb_tracks} songs</div></a>`).join('')}</div>`;
+    let pl; try { pl = (await api.deezerChart()).playlists; } catch { return null; } // hidden where Deezer has no catalog
+    if (!pl.length) return null;
+    return `<div class="shelf">${pl.map((p) => `<a class="card" href="#/dzplaylist/${p.id}"><div class="art">${img(p.picture_xl || p.picture_big, 300)}</div><div class="t">${esc(p.title)}</div><div class="s">${songsN(p.nb_tracks)}</div></a>`).join('')}</div>`;
   });
 });
 
@@ -141,8 +160,8 @@ route('genre', async (v, id) => {
 
 route('dzplaylist', async (v, id) => {
   v.innerHTML = backBtn() + '<div class="sbody">' + skel('list') + '</div>';
-  const p = await api.deezerPlaylist(id);
-  collection(v, { title: p.title, by: p.artist, meta: `${p.tracks.length} songs · Playlist`, artwork: p.artwork, tracks: p.tracks });
+  let p; try { p = await api.deezerPlaylist(id); } catch (e) { v.innerHTML = backBtn() + `<div class="empty"><h3>Playlist unavailable</h3><p>${esc(e.message)}</p></div>`; return; }
+  collection(v, { title: p.title, by: p.artist, meta: `${songsN(p.tracks.length)} · Playlist`, artwork: p.artwork, tracks: p.tracks });
 });
 
 function collection(v, c) {
@@ -155,13 +174,13 @@ function collection(v, c) {
 
 route('album', async (v, id) => {
   v.innerHTML = backBtn() + skel('list');
-  const a = await api.album(id);
-  collection(v, { title: a.title, by: a.artist, byHref: a.artistId ? `#/artist/${a.artistId}?name=${encodeURIComponent(a.artist)}` : '', meta: [a.genre, a.year, a.count && `${a.count} songs`].filter(Boolean).join(' · '), artwork: a.artwork, tracks: a.tracks, index: true, sub: (t) => fmt(t.duration) });
+  let a; try { a = await api.album(id); } catch (e) { v.innerHTML = backBtn() + `<div class="empty"><h3>Album unavailable</h3><p>${esc(e.message)}</p><p><button class="pill" onclick="location.reload()">Try Again</button></p></div>`; return; }
+  collection(v, { title: a.title, by: a.artist, byHref: a.artistId ? `#/artist/${a.artistId}?name=${encodeURIComponent(a.artist)}` : '', meta: [a.genre, a.year, a.count && `${songsN(a.count)}`].filter(Boolean).join(' · '), artwork: a.artwork, tracks: a.tracks, index: true, sub: (t) => fmt(t.duration) });
 });
 
 route('artist', async (v, id, params) => {
   v.innerHTML = backBtn() + skel('list');
-  const a = await api.artist(id, params.get('name'));
+  let a; try { a = await api.artist(id, params.get('name')); } catch (e) { v.innerHTML = backBtn() + `<div class="empty"><h3>Artist unavailable</h3><p>${esc(e.message)}</p><p><button class="pill" onclick="location.reload()">Try Again</button></p></div>`; return; }
   const albums = a.albums;
   collection(v, { title: a.name, round: true, meta: a.fans ? `${a.fans.toLocaleString()} fans` : 'Artist', artwork: a.artwork, tracks: a.top.slice(0, 10),
     extra: `<button class="pill ghost" data-station-artist="${esc(a.id)}" data-name="${esc(a.name)}">${icon('radio')}Station</button>`,
@@ -208,7 +227,7 @@ route('library', (v) => {
       <a class="row" href="#/liked"><span style="display:flex;gap:12px;align-items:center"><span style="color:var(--accent)">${icon('heart-fill')}</span>Liked Songs</span><span class="sub" style="color:var(--text-2)">${liked.length}</span></a>
       <a class="row" href="#/recent"><span style="display:flex;gap:12px;align-items:center"><span style="color:var(--accent)">${icon('queue')}</span>Recently Played</span><span style="color:var(--text-2)">${recent.length}</span></a>
       <a class="row" href="#/settings"><span style="display:flex;gap:12px;align-items:center"><span style="color:var(--accent)">${icon('gear')}</span>Settings</span>${icon('chev-right')}</a></div>` +
-    `<section class="section"><div class="section-head"><h2>Playlists</h2></div>${pls.length ? `<div class="shelf">${pls.map((p) => `<a class="card" href="#/playlist/${p.id}"><div class="art">${p.tracks[0] ? img(p.tracks[0].artwork, 300) : `<div style="display:grid;place-items:center;height:100%;color:var(--accent)">${icon('queue')}</div>`}</div><div class="t">${esc(p.name)}</div><div class="s">${p.tracks.length} songs</div></a>`).join('')}</div>` : '<p class="err">No playlists yet. Create one, then add songs with ⋯ → Add to Playlist.</p>'}</section>` +
+    `<section class="section"><div class="section-head"><h2>Playlists</h2></div>${pls.length ? `<div class="shelf">${pls.map((p) => `<a class="card" href="#/playlist/${p.id}"><div class="art">${p.tracks[0] ? img(p.tracks[0].artwork, 300) : `<div style="display:grid;place-items:center;height:100%;color:var(--accent)">${icon('queue')}</div>`}</div><div class="t">${esc(p.name)}</div><div class="s">${songsN(p.tracks.length)}</div></a>`).join('')}</div>` : '<p class="err">No playlists yet. Create one, then add songs with ⋯ → Add to Playlist.</p>'}</section>` +
     (recent.length ? `<section class="section"><div class="section-head"><h2>Recently Played</h2></div>${songCards(recent.slice(0, 15))}</section>` : '') +
     (liked.length ? `<section class="section"><div class="section-head"><h2>Liked Songs</h2></div>${trackShelf(liked.slice(0, 24))}</section>` : '') +
     (!liked.length && !recent.length ? '<div class="empty"><h3>Your library is empty</h3><p>Tap ♥ on a song in Now Playing to like it. Songs you play show up here too.</p></div>' : '');
@@ -221,11 +240,11 @@ function newPlaylist(track) {
   if (location.hash.startsWith('#/library')) render();
   return p;
 }
-route('liked', (v) => { const l = library.liked(); collection(v, { title: 'Liked Songs', meta: `${l.length} songs`, artwork: l[0]?.artwork, tracks: l }); });
-route('recent', (v) => { const l = library.recent(); collection(v, { title: 'Recently Played', meta: `${l.length} songs`, artwork: l[0]?.artwork, tracks: l, extra: l.length ? '<button class="pill ghost" id="clr-recent">Clear</button>' : '' }); const c = $('#clr-recent', v); if (c) c.onclick = () => { library.clearRecent(); render(); }; });
+route('liked', (v) => { const l = library.liked(); collection(v, { title: 'Liked Songs', meta: `${songsN(l.length)}`, artwork: l[0]?.artwork, tracks: l }); });
+route('recent', (v) => { const l = library.recent(); collection(v, { title: 'Recently Played', meta: `${songsN(l.length)}`, artwork: l[0]?.artwork, tracks: l, extra: l.length ? '<button class="pill ghost" id="clr-recent">Clear</button>' : '' }); const c = $('#clr-recent', v); if (c) c.onclick = () => { library.clearRecent(); render(); }; });
 route('playlist', (v, id) => {
   const p = library.playlist(id); if (!p) { v.innerHTML = backBtn() + '<div class="empty"><h3>Playlist not found</h3></div>'; return; }
-  collection(v, { title: p.name, meta: `${p.tracks.length} songs · Playlist`, artwork: p.tracks[0]?.artwork, tracks: p.tracks,
+  collection(v, { title: p.name, meta: `${songsN(p.tracks.length)} · Playlist`, artwork: p.tracks[0]?.artwork, tracks: p.tracks,
     extra: `<button class="pill ghost" id="pl-ren">Rename</button><button class="pill ghost" id="pl-del">Delete</button>` });
   $$('.trow', v).forEach((r) => { r.dataset.playlist = id; });
   $('#pl-ren', v).onclick = () => { const n = prompt('Rename playlist', p.name); if (n) { library.renamePlaylist(id, n.trim().slice(0, 80)); render(); } };
