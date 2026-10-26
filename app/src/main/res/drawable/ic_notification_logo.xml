@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- BeatMusic notification mark: opaque white silhouette, five beat bars. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M24.10,39.05 a4.60,4.60 0 0 1 4.60,4.60 v20.70 a4.60,4.60 0 0 1 -4.60,4.60 a4.60,4.60 0 0 1 -4.60,-4.60 v-20.70 a4.60,4.60 0 0 1 4.60,-4.60 z M39.05,27.55 a4.60,4.60 0 0 1 4.60,4.60 v43.70 a4.60,4.60 0 0 1 -4.60,4.60 a4.60,4.60 0 0 1 -4.60,-4.60 v-43.70 a4.60,4.60 0 0 1 4.60,-4.60 z M54.00,19.50 a4.60,4.60 0 0 1 4.60,4.60 v59.80 a4.60,4.60 0 0 1 -4.60,4.60 a4.60,4.60 0 0 1 -4.60,-4.60 v-59.80 a4.60,4.60 0 0 1 4.60,-4.60 z M68.95,32.15 a4.60,4.60 0 0 1 4.60,4.60 v34.50 a4.60,4.60 0 0 1 -4.60,4.60 a4.60,4.60 0 0 1 -4.60,-4.60 v-34.50 a4.60,4.60 0 0 1 4.60,-4.60 z M83.90,25.25 a4.60,4.60 0 0 1 4.60,4.60 v48.30 a4.60,4.60 0 0 1 -4.60,4.60 a4.60,4.60 0 0 1 -4.60,-4.60 v-48.30 a4.60,4.60 0 0 1 4.60,-4.60 z"/>
+</vector>

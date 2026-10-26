@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BeatMusic</title>
+<meta name="description" content="BeatMusic Web — search, play and sing along with synced lyrics. By KyotoByte.">
+<meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+<meta name="color-scheme" content="dark light">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+<script type="module" src="js/app.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="lg-refract" x="0" y="0" width="100%" height="100%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018 0.024" numOctaves="1" seed="7" result="n"/>
+      <feGaussianBlur in="n" stdDeviation="2" result="nb"/>
+      <feDisplacementMap in="SourceGraphic" in2="nb" scale="7" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M12 3.2 3.5 10v10.3c0 .4.3.7.7.7h5.1v-6.2h5.4V21h5.1c.4 0 .7-.3.7-.7V10z" fill="currentColor"/></symbol>
+  <symbol id="i-browse" viewBox="0 0 24 24"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z" fill="currentColor" rx="2"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M5 5a10 10 0 0 0 0 14M19 5a10 10 0 0 1 0 14"/></g></symbol>
+  <symbol id="i-library" viewBox="0 0 24 24"><path d="M4 3.5h2.6v17H4zm4.7 0h2.6v17H8.7zm5 .9 2.5-.7 4.3 15.9-2.5.7z" fill="currentColor"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></g></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.6v14.8c0 .8.9 1.3 1.6.9l12-7.4c.6-.4.6-1.4 0-1.8l-12-7.4C7.9 3.3 7 3.8 7 4.6z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="5.5" y="4" width="4.6" height="16" rx="1.4" fill="currentColor"/><rect x="13.9" y="4" width="4.6" height="16" rx="1.4" fill="currentColor"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M2.5 6.2v11.6c0 .7.8 1.1 1.4.7L12 12.8v5c0 .7.8 1.1 1.4.7l8.4-5.8c.5-.4.5-1.1 0-1.5l-8.4-5.8c-.6-.4-1.4 0-1.4.7v5L3.9 5.5c-.6-.4-1.4 0-1.4.7z" fill="currentColor"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M21.5 6.2v11.6c0 .7-.8 1.1-1.4.7L12 12.8v5c0 .7-.8 1.1-1.4.7l-8.4-5.8c-.5-.4-.5-1.1 0-1.5l8.4-5.8c.6-.4 1.4 0 1.4.7v5l8.1-5.6c.6-.4 1.4 0 1.4.7z" fill="currentColor"/></symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h3.5c2 0 3.2 1 4.3 2.7l2.4 4.6c1 1.8 2.3 2.7 4.3 2.7H21M3 17h3.5c1.7 0 2.8-.7 3.7-2M14 9c.9-1.3 2-2 3.6-2H21"/><path d="m18.5 4.5 2.5 2.5-2.5 2.5M18.5 14.5l2.5 2.5-2.5 2.5"/></g></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11V9.5A3.5 3.5 0 0 1 7.5 6H19M20 13v1.5a3.5 3.5 0 0 1-3.5 3.5H5"/><path d="m16.5 3.5 2.5 2.5-2.5 2.5M7.5 20.5 5 18l2.5-2.5"/></g></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.3s-8.3-4.9-8.3-11A4.6 4.6 0 0 1 12 6.8a4.6 4.6 0 0 1 8.3 2.5c0 6.1-8.3 11-8.3 11z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+  <symbol id="i-heart-fill" viewBox="0 0 24 24"><path d="M12 20.3s-8.3-4.9-8.3-11A4.6 4.6 0 0 1 12 6.8a4.6 4.6 0 0 1 8.3 2.5c0 6.1-8.3 11-8.3 11z" fill="currentColor"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5.5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18.5" cy="12" r="2"/></g></symbol>
+  <symbol id="i-lyrics" viewBox="0 0 24 24"><path d="M5 3.5h10.5A3.5 3.5 0 0 1 19 7v6.5a3.5 3.5 0 0 1-3.5 3.5H10l-4.3 3.4c-.5.4-1.2 0-1.2-.6V17A3.5 3.5 0 0 1 1.5 13.5V7A3.5 3.5 0 0 1 5 3.5z" transform="translate(2 0)" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 8.5h8M8 12h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-queue" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4" cy="6" r=".6" fill="currentColor"/><circle cx="4" cy="12" r=".6" fill="currentColor"/><circle cx="4" cy="18" r=".6" fill="currentColor"/></g></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="m5 9 7 7 7-7" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chev-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 4-8 8 8 8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-vol-low" viewBox="0 0 24 24"><path d="M3 9.5v5h3.5L11 19V5L6.5 9.5z" fill="currentColor"/></symbol>
+  <symbol id="i-vol-high" viewBox="0 0 24 24"><path d="M3 9.5v5h3.5L11 19V5L6.5 9.5z" fill="currentColor"/><path d="M14.5 8.5a5 5 0 0 1 0 7M17.5 5.5a9 9 0 0 1 0 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><path d="M4 8h16M4 12h16M4 16h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="13" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 10.5 5-3v9l-5-3z" fill="currentColor"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8zm8.6 4.6-1.9.4a6.9 6.9 0 0 1-.7 1.6l1.1 1.6-1.6 1.6-1.6-1.1a6.9 6.9 0 0 1-1.6.7l-.4 1.9h-2.3l-.4-1.9a6.9 6.9 0 0 1-1.6-.7l-1.6 1.1-1.6-1.6 1.1-1.6a6.9 6.9 0 0 1-.7-1.6l-1.9-.4v-2.3l1.9-.4a6.9 6.9 0 0 1 .7-1.6L4.5 7.2l1.6-1.6 1.6 1.1a6.9 6.9 0 0 1 1.6-.7l.4-1.9h2.3l.4 1.9a6.9 6.9 0 0 1 1.6.7l1.6-1.1 1.6 1.6-1.1 1.6a6.9 6.9 0 0 1 .7 1.6l1.9.4z" fill="currentColor"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 24 24"><rect x="3" y="9" width="3" height="6" rx="1.5" fill="currentColor"/><rect x="7.5" y="5" width="3" height="14" rx="1.5" fill="currentColor"/><rect x="12" y="2.5" width="3" height="19" rx="1.5" fill="currentColor"/><rect x="16.5" y="7" width="3" height="10" rx="1.5" fill="currentColor"/></symbol>
+</svg>
+
+<a class="skip" href="#main">Skip to content</a>
+<div class="app" id="app">
+  <aside class="sidebar glass" aria-label="Navigation">
+    <a class="brand" href="#/home" aria-label="BeatMusic home"><span class="brand-mark"><svg><use href="#i-logo"/></svg></span><span>BeatMusic</span></a>
+    <label class="side-search">
+      <svg aria-hidden="true"><use href="#i-search"/></svg>
+      <input id="side-search" type="search" placeholder="Search" autocomplete="off" aria-label="Search songs, artists, albums">
+    </label>
+    <nav class="side-nav">
+      <a href="#/home" data-tab="home"><svg><use href="#i-home"/></svg>Home</a>
+      <a href="#/browse" data-tab="browse"><svg><use href="#i-browse"/></svg>Browse</a>
+      <a href="#/radio" data-tab="radio"><svg><use href="#i-radio"/></svg>Radio</a>
+      <p class="side-head">Library</p>
+      <a href="#/library" data-tab="library"><svg><use href="#i-library"/></svg>Library</a>
+      <a href="#/liked" data-tab="liked"><svg><use href="#i-heart"/></svg>Liked Songs</a>
+      <a href="#/recent" data-tab="recent"><svg><use href="#i-queue"/></svg>Recently Played</a>
+      <div id="side-playlists" class="side-playlists"></div>
+    </nav>
+    <div class="side-foot">
+      <a href="#/settings" data-tab="settings"><svg><use href="#i-gear"/></svg>Settings</a>
+      <p class="credit"><a href="https://github.com/KyotoByte" target="_blank" rel="noopener">KyotoByte</a> · <a href="LICENSE.txt" target="_blank" rel="noopener">Licence</a></p>
+    </div>
+  </aside>
+
+  <main id="main" class="main" tabindex="-1">
+    <div id="view" class="view"></div>
+  </main>
+
+  <div class="miniplayer glass" id="mini" hidden>
+    <button class="mini-open" id="mini-open" aria-label="Open Now Playing">
+      <img class="mini-art" id="mini-art" alt="" width="44" height="44">
+      <span class="mini-meta"><span class="mini-title" id="mini-title"></span><span class="mini-sub" id="mini-sub"></span></span>
+    </button>
+    <span class="badge-preview" id="mini-badge" hidden>Preview</span>
+    <div class="mini-ctrls">
+      <button class="icon-btn desk-only" id="mini-prev" aria-label="Previous"><svg><use href="#i-prev"/></svg></button>
+      <button class="icon-btn" id="mini-play" aria-label="Play"><svg><use href="#i-play"/></svg></button>
+      <button class="icon-btn" id="mini-next" aria-label="Next"><svg><use href="#i-next"/></svg></button>
+      <button class="icon-btn desk-only" id="mini-lyrics" aria-label="Lyrics"><svg><use href="#i-lyrics"/></svg></button>
+      <button class="icon-btn desk-only" id="mini-queue" aria-label="Up Next"><svg><use href="#i-queue"/></svg></button>
+    </div>
+    <div class="mini-progress" aria-hidden="true"><i id="mini-bar"></i></div>
+  </div>
+
+  <nav class="tabbar" id="tabbar" aria-label="Tabs">
+    <div class="tabs glass">
+      <span class="tab-pill" id="tab-pill" aria-hidden="true"></span>
+      <a href="#/home" data-tab="home"><svg><use href="#i-home"/></svg><span>Home</span></a>
+      <a href="#/browse" data-tab="browse"><svg><use href="#i-browse"/></svg><span>Browse</span></a>
+      <a href="#/radio" data-tab="radio"><svg><use href="#i-radio"/></svg><span>Radio</span></a>
+      <a href="#/library" data-tab="library"><svg><use href="#i-library"/></svg><span>Library</span></a>
+    </div>
+    <a class="tab-search glass" href="#/search" data-tab="search" aria-label="Search"><svg><use href="#i-search"/></svg></a>
+  </nav>
+</div>
+
+<section class="np" id="np" aria-label="Now Playing" aria-hidden="true" inert>
+  <div class="np-bg" aria-hidden="true"><div class="np-blob b1"></div><div class="np-blob b2"></div><div class="np-blob b3"></div><img id="np-bgimg" alt=""></div>
+  <div class="np-inner">
+    <header class="np-top">
+      <button class="np-grabber" id="np-close" aria-label="Close Now Playing"><span></span></button>
+    </header>
+    <div class="np-body">
+      <div class="np-left">
+        <div class="np-art-wrap" id="np-art-wrap">
+          <img class="np-art" id="np-art" alt="">
+          <div class="np-video" id="np-video"><div id="yt-host"></div></div>
+        </div>
+        <div class="np-meta">
+          <div class="np-titles">
+            <h2 id="np-title" class="marquee"></h2>
+            <button class="np-artist" id="np-artist"></button>
+          </div>
+          <span class="badge-preview" id="np-badge" hidden>Preview</span>
+          <button class="round-glass" id="np-like" aria-label="Like" aria-pressed="false"><svg><use href="#i-heart"/></svg></button>
+          <button class="round-glass" id="np-more" aria-label="More options"><svg><use href="#i-more"/></svg></button>
+        </div>
+        <div class="np-scrub">
+          <input type="range" id="np-seek" min="0" max="1000" value="0" step="1" aria-label="Seek">
+          <div class="np-times"><span id="np-cur">0:00</span><span id="np-src" class="np-src"></span><span id="np-rem">-0:00</span></div>
+        </div>
+        <div class="np-ctrls">
+          <button class="icon-btn sm" id="np-shuffle" aria-label="Shuffle" aria-pressed="false"><svg><use href="#i-shuffle"/></svg></button>
+          <button class="icon-btn lg" id="np-prev" aria-label="Previous"><svg><use href="#i-prev"/></svg></button>
+          <button class="icon-btn xl" id="np-play" aria-label="Play"><svg><use href="#i-play"/></svg></button>
+          <button class="icon-btn lg" id="np-next" aria-label="Next"><svg><use href="#i-next"/></svg></button>
+          <button class="icon-btn sm" id="np-repeat" aria-label="Repeat: off" aria-pressed="false"><svg><use href="#i-repeat"/></svg><b class="rep1">1</b></button>
+        </div>
+        <div class="np-vol">
+          <svg aria-hidden="true"><use href="#i-vol-low"/></svg>
+          <input type="range" id="np-volume" min="0" max="100" value="100" aria-label="Volume">
+          <svg aria-hidden="true"><use href="#i-vol-high"/></svg>
+        </div>
+        <div class="np-tools">
+          <button class="tool" id="np-tab-lyrics" aria-label="Lyrics" aria-pressed="false"><svg><use href="#i-lyrics"/></svg></button>
+          <button class="tool" id="np-tab-video" aria-label="Video" aria-pressed="false"><svg><use href="#i-video"/></svg></button>
+          <button class="tool" id="np-tab-queue" aria-label="Up Next" aria-pressed="false"><svg><use href="#i-queue"/></svg></button>
+        </div>
+      </div>
+      <div class="np-right" id="np-right">
+        <div class="np-panel lyrics-panel" id="lyrics-panel" role="region" aria-label="Lyrics"></div>
+        <div class="np-panel queue-panel" id="queue-panel" role="region" aria-label="Up Next" hidden></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sheet-scrim" id="menu-scrim" hidden></div>
+<div class="menu glass" id="menu" role="menu" hidden></div>
+<div class="toast glass" id="toast" role="status" aria-live="polite" hidden></div>
+<audio id="audio" preload="none"></audio>
+<noscript><p style="padding:24px">BeatMusic needs JavaScript.</p></noscript>
+</body>
+</html>
