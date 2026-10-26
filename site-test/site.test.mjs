@@ -36,3 +36,11 @@ test('LRC parsing', async () => {
   assert.equal(l[0].t, 10);
   assert.equal(l.at(-1).t, 61.75);
 });
+
+test('region from the phone time zone (India phones often run en-US)', async () => {
+  globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+  process.env.TZ = 'Asia/Kolkata';
+  Object.defineProperty(globalThis, 'navigator', { value: { language: 'en-US', languages: ['en-US'] }, configurable: true });
+  const { detectCountry } = await import('../site/js/api.js');
+  assert.equal(detectCountry(), 'in');
+});
