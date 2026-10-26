@@ -119,7 +119,7 @@ export class Player extends EventTarget {
     if (!id) return this.playPreview(tok, 'Full song isn’t embeddable');
     this.mode = 'yt'; this.videoId = id; this.emit('source');
     this.yt.loadVideoById({ videoId: id, startSeconds: 0 }); this.ytLoadedAt = Date.now();
-    this.startTick();
+    this.watchYT(); this.startTick();
     this.yt.setVolume(this.volume); this.yt.unMute?.();
   }
   playPreview(tok, why) {
@@ -146,15 +146,26 @@ export class Player extends EventTarget {
     })).catch((e) => { this.ytReady = null; throw e; });
     return this.ytReady;
   }
-  // The IFrame API sometimes drops a state event (seen on desktop: video playing, status stuck on "loading"),
-  // which made pause/seek look dead. While loading, read the real state from the player itself.
+  // YouTube's IFrame API reports state -1 ("unstarted") while it plays an ad before the song, with the clock
+  // running on the ad. Seen on desktop: the app sat on "loading" and its seek bar/lyrics followed the ad.
+  // A 1-second watchdog reads the real player state: an ad is labelled and kept off the song's clock, a
+  // dropped "playing" event is recovered, and a video that never starts (autoplay refused) shows Play.
+  watchYT() {
+    clearInterval(this._watch); this._lastRT = 0; this._lastWall = Date.now(); this.inAd = false;
+    this._watch = setInterval(() => this.syncYTState(), 1000);
+  }
   syncYTState() {
-    if (this.mode !== 'yt' || this.status !== 'loading' || !this.yt?.getPlayerState) return;
-    let s; try { s = this.yt.getPlayerState(); } catch { return; }
-    if (s === 1) this.setStatus('playing'); else if (s === 2) this.setStatus('paused');
-    // Autoplay refused (no tap yet, e.g. a station started after a reload): the video sits "unstarted".
-    // Show a Play button instead of spinning forever; a tap starts it.
-    else if ((s === -1 || s === 5) && Date.now() - (this.ytLoadedAt || 0) > 6000) this.setStatus('paused');
+    if (this.mode !== 'yt' || !this.yt?.getPlayerState) return;
+    let s, rt; try { s = this.yt.getPlayerState(); rt = this.yt.getCurrentTime() || 0; } catch { return; }
+    const now = Date.now(); const adv = rt > this._lastRT + 0.3 && rt - this._lastRT > 0.4 * (now - this._lastWall) / 1000;
+    this._lastRT = rt; this._lastWall = now;
+    const wasAd = this.inAd;
+    if (s === 1) { this.inAd = false; this.setStatus('playing'); }
+    else if (s === 2) { this.inAd = false; this.setStatus('paused'); }
+    else if (s === -1 && adv) { this.inAd = true; if (this.status !== 'loading') this.setStatus('loading'); this.startTick(); }
+    else if (s === -1 && this.inAd && this._userPaused) this.setStatus('paused');
+    else if ((s === -1 || s === 5) && !this.inAd && this.status === 'loading' && now - (this.ytLoadedAt || 0) > 8000) this.setStatus('paused');
+    if (wasAd !== this.inAd) this.emit('source');
   }
   onYTState(s) {
     if (this.mode !== 'yt') return;
@@ -175,22 +186,23 @@ export class Player extends EventTarget {
   stopEngines() {
     try { this.audio.pause(); this.audio.removeAttribute('src'); this.audio.load(); } catch {}
     try { this.yt?.stopVideo?.(); } catch {}
+    clearInterval(this._watch); this.inAd = false;
   }
 
   // ---------- transport ----------
   play() {
     if (this.index < 0) return;
+    this._userPaused = false;
     if (this.mode === 'yt') this.yt?.playVideo();
     else if (this.mode === 'preview') this.audio.play().catch(() => {});
     else if (this.status === 'error') this.load();
   }
-  pause() { if (this.mode === 'yt') this.yt?.pauseVideo(); else if (this.mode === 'preview') this.audio.pause(); }
+  pause() { this._userPaused = true; if (this.mode === 'yt') this.yt?.pauseVideo(); else if (this.mode === 'preview') this.audio.pause(); }
   toggle() {
-    this.syncYTState();
     if (this.status === 'playing' || (this.status === 'loading' && this.mode)) this.pause(); else this.play();
   }
   time() {
-    if (this.mode === 'yt') return this.yt?.getCurrentTime?.() || 0;
+    if (this.mode === 'yt') return this.inAd ? 0 : this.yt?.getCurrentTime?.() || 0;
     if (this.mode === 'preview') return this.audio.currentTime || 0;
     return 0;
   }
@@ -212,7 +224,7 @@ export class Player extends EventTarget {
   startTick() { if (!this._tickOn) { this._tickOn = true; this._last = 0; requestAnimationFrame(this.tick); } }
   tick(now) {
     if (this.status !== 'playing' && this.status !== 'loading') { this._tickOn = false; this.emit('time'); return; }
-    if (now - this._last > (document.hidden ? 1000 : 120)) { this._last = now; this.syncYTState(); this.emit('time'); this.positionState(); }
+    if (now - this._last > (document.hidden ? 1000 : 120)) { this._last = now; this.emit('time'); this.positionState(); }
     requestAnimationFrame(this.tick);
   }
 

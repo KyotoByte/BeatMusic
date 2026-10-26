@@ -469,7 +469,7 @@ function updateTime() {
 function updateSource() {
   const pv = player.mode === 'preview';
   $('#np-badge').hidden = !pv; $('#mini-badge').hidden = !pv;
-  $('#np-src').textContent = player.status === 'loading' && !player.mode ? 'Finding song…' : pv ? '30-second preview' : player.mode === 'yt' ? 'Full song · YouTube' : player.status === 'error' ? 'Unavailable' : '';
+  $('#np-src').textContent = player.status === 'loading' && !player.mode ? 'Finding song…' : pv ? '30-second preview' : player.inAd ? 'YouTube ad · your song starts next' : player.mode === 'yt' ? 'Full song · YouTube' : player.status === 'error' ? 'Unavailable' : '';
   if (player.mode !== 'yt') { np.classList.remove('show-video'); $('#np-tab-video').setAttribute('aria-pressed', false); }
 }
 function updateNP() {
