@@ -15,7 +15,7 @@ function loadYT() {
     const s = document.createElement('script'); s.src = 'https://www.youtube.com/iframe_api'; s.async = true;
     s.onerror = () => { ytApi = null; reject(new Error('YouTube player unavailable')); };
     document.head.appendChild(s);
-    setTimeout(() => { if (!window.YT?.Player) { ytApi = null; reject(new Error('YouTube player timeout')); } }, 12000);
+    setTimeout(() => { if (!window.YT?.Player) { ytApi = null; reject(new Error('YouTube player timeout')); } }, 20000);
   });
   return ytApi;
 }
@@ -39,6 +39,7 @@ export class Player extends EventTarget {
     this.tick = this.tick.bind(this); this._tickOn = false;
     this.mediaSession();
   }
+  warmUp() { loadYT().catch(() => {}); }
   emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
   toast(m) { this.emit('toast', m); }
   get current() { return this.queue[this.index] || null; }
@@ -117,7 +118,7 @@ export class Player extends EventTarget {
     const id = this.cands[this.candIdx];
     if (!id) return this.playPreview(tok, 'Full song isn’t embeddable');
     this.mode = 'yt'; this.videoId = id; this.emit('source');
-    this.yt.loadVideoById({ videoId: id, startSeconds: 0 });
+    this.yt.loadVideoById({ videoId: id, startSeconds: 0 }); this.ytLoadedAt = Date.now();
     this.startTick();
     this.yt.setVolume(this.volume); this.yt.unMute?.();
   }
@@ -151,6 +152,9 @@ export class Player extends EventTarget {
     if (this.mode !== 'yt' || this.status !== 'loading' || !this.yt?.getPlayerState) return;
     let s; try { s = this.yt.getPlayerState(); } catch { return; }
     if (s === 1) this.setStatus('playing'); else if (s === 2) this.setStatus('paused');
+    // Autoplay refused (no tap yet, e.g. a station started after a reload): the video sits "unstarted".
+    // Show a Play button instead of spinning forever; a tap starts it.
+    else if ((s === -1 || s === 5) && Date.now() - (this.ytLoadedAt || 0) > 6000) this.setStatus('paused');
   }
   onYTState(s) {
     if (this.mode !== 'yt') return;

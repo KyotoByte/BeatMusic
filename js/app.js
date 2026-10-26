@@ -587,6 +587,8 @@ document.addEventListener('keydown', (e) => {
 
 // ---------------- boot ----------------
 render();
+// Load the YouTube player early so the first tap starts the full song sooner.
+(window.requestIdleCallback || ((f) => setTimeout(f, 1500)))(() => player.warmUp());
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   // When an updated worker takes over a page that an older one was serving, reload once so the new files run.
   const hadController = !!navigator.serviceWorker.controller; let reloaded = false;

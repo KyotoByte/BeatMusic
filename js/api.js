@@ -5,7 +5,15 @@
 //  - Piped (open-source YouTube front-end) public instances: CORS enabled, used only to find a YouTube video id
 import { store } from './store.js';
 
+// The phone's time zone says where the listener is far more reliably than its language (many phones in India
+// run "English (United States)", which used to show US charts). Language region is the fallback.
+const TZ_COUNTRY = { 'Asia/Kolkata': 'in', 'Asia/Calcutta': 'in', 'Asia/Karachi': 'pk', 'Asia/Dhaka': 'bd', 'Asia/Kathmandu': 'np',
+  'Asia/Katmandu': 'np', 'Asia/Colombo': 'lk', 'Asia/Dubai': 'ae', 'Asia/Singapore': 'sg', 'Asia/Kuala_Lumpur': 'my', 'Asia/Jakarta': 'id',
+  'Asia/Manila': 'ph', 'Asia/Tokyo': 'jp', 'Asia/Seoul': 'kr', 'Europe/London': 'gb', 'Europe/Berlin': 'de', 'Europe/Paris': 'fr',
+  'Europe/Madrid': 'es', 'Europe/Rome': 'it', 'Africa/Lagos': 'ng', 'Africa/Johannesburg': 'za', 'America/Sao_Paulo': 'br',
+  'America/Mexico_City': 'mx', 'America/Toronto': 'ca', 'America/Vancouver': 'ca', 'Australia/Sydney': 'au', 'Australia/Melbourne': 'au' };
 export function detectCountry() {
+  try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; if (TZ_COUNTRY[tz]) return TZ_COUNTRY[tz]; } catch { /* old browser */ }
   const langs = navigator.languages || [navigator.language || 'en-US'];
   for (const l of langs) { const m = /-([A-Za-z]{2})$/.exec(l); if (m) return m[1].toLowerCase(); }
   return 'us';
